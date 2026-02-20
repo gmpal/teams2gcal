@@ -1,26 +1,19 @@
 from flask import Flask, request, Response
 import requests
-import re
 
 app = Flask(__name__)
 
-VTIMEZONE_TEMPLATES = {
-    "Eastern Time (US & Canada)": """BEGIN:VTIMEZONE
-TZID:Eastern Time (US & Canada)
-BEGIN:DAYLIGHT
-DTSTART:19700308T020000
-RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
-TZOFFSETFROM:-0500
-TZOFFSETTO:-0400
-END:DAYLIGHT
-BEGIN:STANDARD
-DTSTART:19701101T020000
-RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
-TZOFFSETFROM:-0400
-TZOFFSETTO:-0500
-END:STANDARD
-END:VTIMEZONE""",
-    # Add "Pacific Standard Time", "Central European Time", your local one, etc.
+TZ_MAPPING = {
+    "Romance Standard Time": "Europe/Brussels",
+    "W. Europe Standard Time": "Europe/Paris",
+    "GMT Standard Time": "Europe/London",
+    "Eastern Standard Time": "America/New_York",
+    "Central European Standard Time": "Europe/Warsaw",
+    "Fiji Standard Time": "Pacific/Fiji",
+    "Central Standard Time": "America/Chicago",
+    "Pacific Standard Time": "America/Los_Angeles",
+    "Morocco Standard Time": "Africa/Casablanca",
+    "FLE Standard Time": "Europe/Kiev" # Or Helsinki/Kyiv
 }
 
 @app.route('/', methods=['GET'])
@@ -29,25 +22,22 @@ def fix_ics():
     if not ics_url:
         return "Missing ?ics_url= parameter", 400
 
-    # Fetch original
-    r = requests.get(ics_url, timeout=30)
-    if r.status_code != 200:
-        return f"Failed to fetch ICS: {r.status_code}", 502
+    try:
+        r = requests.get(ics_url, timeout=30)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        return f"Failed to fetch ICS: {str(e)}", 502
     
     ics = r.text
 
-    # Find all used TZIDs
-    used_tzids = set(re.findall(r'TZID=([^:\r\n]+)', ics))
+    count = 0
+    for ms_tz, iana_tz in TZ_MAPPING.items():
+        if ms_tz in ics:
+            ics = ics.replace(f'TZID={ms_tz}', f'TZID={iana_tz}')
+            count += 1
+            
 
-    # Append missing VTIMEZONE blocks at the end (before final END:VCALENDAR)
-    added = False
-    for tz in used_tzids:
-        if tz in VTIMEZONE_TEMPLATES and f'TZID:{tz}' not in ics:
-            ics = ics.replace('END:VCALENDAR', VTIMEZONE_TEMPLATES[tz] + '\nEND:VCALENDAR')
-            added = True
-
-    if added:
-        print(f"Added VTIMEZONE blocks for: {used_tzids}")
+    print(f"Fixed {count} timezone types.")
 
     return Response(ics, mimetype='text/calendar')
 
