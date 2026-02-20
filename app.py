@@ -151,9 +151,10 @@ def fix_ics():
     ics = re.sub(r'^X-MS-[^\r\n]*\r?\n', '', ics, flags=re.MULTILINE)
 
     # STEP 5: Inject the clean, standard VTIMEZONE definitions
-    # We insert them right after the calendar starts
-    if 'BEGIN:VCALENDAR' in ics:
-        ics = ics.replace('BEGIN:VCALENDAR', 'BEGIN:VCALENDAR\n' + STANDARD_VTIMEZONES)
+    # Insert before the first VEVENT so calendar properties (PRODID, VERSION, METHOD)
+    # come first — RFC 5545 requires calprops before components.
+    if 'BEGIN:VEVENT' in ics:
+        ics = ics.replace('BEGIN:VEVENT', STANDARD_VTIMEZONES + 'BEGIN:VEVENT', 1)
 
     # Clean up empty lines created by regex removal
     ics = re.sub(r'\n\s*\n', '\n', ics)
